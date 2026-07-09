@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pdf2m"
 version = "0.1.0"
-description = "智能 PDF/OCR 多源路由转 Markdown：自动选择 PyMuPDF / MinerU middle.json / OCR md 中最佳抽取路径"
+description = "Smart PDF/OCR multi-source router to Markdown: auto-pick the most accurate extraction path (PyMuPDF / MinerU / OCR md). 智能 PDF/OCR 多源路由器，自动选择最佳抽取路径。"
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}
