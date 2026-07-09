@@ -103,31 +103,15 @@ pytest
 ruff check src/ && ruff format --check src/
 ```
 
-## 与现有工具的差异
+感谢以下开源项目：
 
-| 工具 | OCR | 自动选源 | 多 OCR 通用 | 中文友好 |
-|---|---|---|---|---|
-| `pdfminer.six` | ✗ | ✗ | ✗ | ✓ |
-| `marker-pdf` | ✓ | ✗ | ✗ | ✓ |
-| `nougat` | ✓ | ✗ | ✗ | ✗ |
-| `pdf2md-tool` | ✓ | ✗ | ✗ | ✓ |
-| `pdf2md-converter` | ✓ | ✗ | ✗ | ✓ |
-| **pdf2m** | ✓ | ✓ | ✓ | ✓ |
+- [**PyMuPDF**](https://github.com/pymupdf/PyMuPDF)
+- [**MinerU**](https://github.com/opendatalab/MinerU)
+- [**PaddleOCR / PaddlePaddle**](https://github.com/PaddlePaddle/PaddleOCR)
+- [**Tesseract**](https://github.com/tesseract-ocr/tesseract)
+- [**marker-pdf**](https://github.com/datalab-to/marker)
+- [**GLM-OCR (zai-org)**](https://github.com/zai-org/GLM-OCR)
 
 ## 📜 许可证
 
 [MIT](LICENSE)
-
-## 🙏 致谢
-
-本项目借鉴并参考了以下开源项目的思路：
-
-- [**opendocsg/pdf2md**](https://github.com/opendocsg/pdf2md) — JavaScript 实现的 PDF→Markdown 思路
-- [**zyocum/pdf2md**](https://github.com/zyocum/pdf2md) — 多模态 OCR 后处理策略
-- [**pdf2md-tool**](https://pypi.org/project/pdf2md-tool/) — CLI 工具的设计经验
-- [**pdf2md-converter**](https://pypi.org/project/pdf2md-converter/) — OCR 工具链整合思路
-- [**pdf2md-llm**](https://pypi.org/project/pdf2md-llm/) — 启发式合并的设计参考
-- [**PyMuPDF**](https://github.com/pymupdf/PyMuPDF) — 文字层抽取的底层依赖
-- [**MinerU**](https://github.com/opendatalab/MinerU) — middle.json 块结构格式的来源
-
-感谢以上项目和它们的所有贡献者。

@@ -1,6 +1,6 @@
 # pdf2m
 
-> Smart PDF/OCR multi-source router to Markdown: auto-pick the most accurate extraction path.
+Smart PDF/OCR multi-source router to Markdown: auto-pick the most accurate extraction path.
 
 [English](README.md) | [中文](README.zh.md)
 
@@ -113,31 +113,15 @@ pytest
 ruff check src/ && ruff format --check src/
 ```
 
-## Comparison with Existing Tools
+Thanks to the following open-source projects:
 
-| Tool | OCR | Auto-source | OCR-agnostic | Chinese-friendly |
-|---|---|---|---|---|
-| `pdfminer.six` | ✗ | ✗ | ✗ | ✓ |
-| `marker-pdf` | ✓ | ✗ | ✗ | ✓ |
-| `nougat` | ✓ | ✗ | ✗ | ✗ |
-| `pdf2md-tool` | ✓ | ✗ | ✗ | ✓ |
-| `pdf2md-converter` | ✓ | ✗ | ✗ | ✓ |
-| **pdf2m** | ✓ | ✓ | ✓ | ✓ |
+- [**PyMuPDF**](https://github.com/pymupdf/PyMuPDF)
+- [**MinerU**](https://github.com/opendatalab/MinerU)
+- [**PaddleOCR / PaddlePaddle**](https://github.com/PaddlePaddle/PaddleOCR)
+- [**Tesseract**](https://github.com/tesseract-ocr/tesseract)
+- [**marker-pdf**](https://github.com/datalab-to/marker)
+- [**GLM-OCR (zai-org)**](https://github.com/zai-org/GLM-OCR)
 
 ## 📜 License
 
 [MIT](LICENSE)
-
-## 🙏 Acknowledgments
-
-This project draws inspiration from the following open-source projects:
-
-- [**opendocsg/pdf2md**](https://github.com/opendocsg/pdf2md) — JS-based PDF→Markdown approach
-- [**zyocum/pdf2md**](https://github.com/zyocum/pdf2md) — multi-modal OCR post-processing strategies
-- [**pdf2md-tool**](https://pypi.org/project/pdf2md-tool/) — CLI design patterns
-- [**pdf2md-converter**](https://pypi.org/project/pdf2md-converter/) — OCR toolchain integration
-- [**pdf2md-llm**](https://pypi.org/project/pdf2md-llm/) — heuristic merging design reference
-- [**PyMuPDF**](https://github.com/pymupdf/PyMuPDF) — the underlying text-layer library
-- [**MinerU**](https://github.com/opendatalab/MinerU) — origin of the middle.json block format
-
-Thanks to all of the above projects and their contributors.
