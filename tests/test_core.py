@@ -14,8 +14,20 @@ from pdf2m.core import (
     is_page_noise,
     is_short_title,
     pick_mode,
+    process_batch,
     process_one,
 )
+
+_has_fitz = False
+try:
+    import fitz  # noqa: F401
+    _has_fitz = True
+except ImportError:
+    pass
+
+
+def _requires_fitz():
+    return pytest.mark.skipif(not _has_fitz, reason="PyMuPDF (fitz) not available")
 
 
 # ============================================================
@@ -96,6 +108,7 @@ def _make_text_pdf(path: Path, pages: list[str], title: str | None = None) -> No
     doc.close()
 
 
+@_requires_fitz()
 def test_extract_pymupdf_basic(tmp_path):
     """最简文字层 PDF → 标题 + 每页 H2 + 文本。"""
     pdf = tmp_path / "demo.pdf"
@@ -108,6 +121,7 @@ def test_extract_pymupdf_basic(tmp_path):
     assert "page-two text" in md
 
 
+@_requires_fitz()
 def test_extract_pymupdf_falls_back_to_filename(tmp_path):
     """没有 metadata 时用文件名当 title（通过 detect_title_from_pdf_meta）。"""
     from pdf2m.core import detect_title_from_pdf_meta
@@ -278,3 +292,105 @@ def test_constants_exposed():
     assert isinstance(SENT_END, str)
     assert "。" in SENT_END
     assert "." in SENT_END_ASCII
+
+
+# ============================================================
+# 异常场景：extract_mineru
+# ============================================================
+def test_extract_mineru_missing_json(tmp_path):
+    """缺失 JSON 文件 → 返回空字符串。"""
+    md = extract_mineru(str(tmp_path / "nonexistent.json"), "Book")
+    assert md == ""
+
+
+def test_extract_mineru_malformed_json(tmp_path):
+    """损坏的 JSON 文件 → 返回空字符串。"""
+    json_path = tmp_path / "bad.json"
+    json_path.write_text("not valid json", encoding="utf-8")
+    md = extract_mineru(str(json_path), "Book")
+    assert md == ""
+
+
+def test_extract_mineru_no_pdf_info(tmp_path):
+    """JSON 中没有 pdf_info → 返回空字符串。"""
+    json_path = tmp_path / "empty.json"
+    json_path.write_text("{}", encoding="utf-8")
+    md = extract_mineru(str(json_path), "Book")
+    assert md == ""
+
+
+def test_extract_mineru_missing_bbox(tmp_path):
+    """块中缺少 bbox → 跳过该块，不崩溃。"""
+    json_path = tmp_path / "nobbox.json"
+    data = {
+        "pdf_info": [
+            {
+                "page_idx": 0,
+                "preproc_blocks": [
+                    {"lines": [{"spans": [{"content": "text", "size": 12.0}]}]}
+                ],
+                "discarded_blocks": [],
+            }
+        ]
+    }
+    json_path.write_text(json.dumps(data), encoding="utf-8")
+    # 无合法块 → pdf_info 非空 → 但 block_list 为空 → continue → 返回"# Book\n"
+    md = extract_mineru(str(json_path), "Book")
+    assert "# Book" in md
+    assert "## 第 1 页" not in md  # 页被跳过
+
+
+# ============================================================
+# 异常场景：extract_pymupdf
+# ============================================================
+@_requires_fitz()
+def test_extract_pymupdf_corrupt_pdf(tmp_path):
+    """损坏的 PDF → 返回错误提示而非崩溃。"""
+    pdf = tmp_path / "corrupt.pdf"
+    pdf.write_bytes(b"not a real PDF")
+    md = extract_pymupdf(str(pdf), "Book")
+    assert md.startswith("# Book")
+    assert "PDF 打开失败" in md
+
+
+# ============================================================
+# 异常场景：pick_mode
+# ============================================================
+def test_pick_mode_mineru_in_subdir(tmp_path):
+    """验证 _mineru/ 子目录中的 middle.json 能被找到（基于输入文件目录）。"""
+    pdf_path = tmp_path / "docs" / "book.pdf"
+    pdf_path.parent.mkdir(parents=True)
+    pdf_path.write_bytes(b"fake pdf")
+
+    mineru_dir = tmp_path / "docs" / "_mineru"
+    mineru_dir.mkdir(parents=True)
+    (mineru_dir / "book_middle.json").write_text("{}", encoding="utf-8")
+
+    mode, src, _ = pick_mode(str(pdf_path))
+    assert mode == "mineru"
+
+
+# ============================================================
+# process_batch 基础
+# ============================================================
+def test_process_batch_basic(tmp_path):
+    """串行批量处理多个文件。"""
+    out_dir = tmp_path / "out"
+    md_in1 = tmp_path / "a.md"
+    md_in2 = tmp_path / "b.md"
+    md_in1.write_text("## 第 1 页\n\nhello\n", encoding="utf-8")
+    md_in2.write_text("## 第 1 页\n\nworld\n", encoding="utf-8")
+    result = process_batch([str(md_in1), str(md_in2)], str(out_dir))
+    assert len(result) == 2
+    assert (out_dir / "a.md").exists()
+    assert (out_dir / "b.md").exists()
+
+
+def test_process_batch_creates_output_dir(tmp_path):
+    """自动创建输出目录。"""
+    out_dir = tmp_path / "nested" / "out"
+    md_in = tmp_path / "x.md"
+    md_in.write_text("## 第 1 页\n\ncontent\n", encoding="utf-8")
+    process_batch([str(md_in)], str(out_dir))
+    assert out_dir.exists()
+    assert (out_dir / "x.md").exists()

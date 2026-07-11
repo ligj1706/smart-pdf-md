@@ -11,15 +11,15 @@ from pdf2m.core import (
     SENT_END,
     SENT_END_ASCII,
     TITLE_RE,
-    is_short_title,
-    is_page_noise,
     detect_title_from_pdf_meta,
-    extract_pymupdf,
     extract_mineru,
     extract_ocr_md,
+    extract_pymupdf,
+    is_page_noise,
+    is_short_title,
     pick_mode,
-    process_one,
     process_batch,
+    process_one,
 )
 
 __version__ = "0.1.0"

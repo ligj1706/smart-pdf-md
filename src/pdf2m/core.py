@@ -78,10 +78,16 @@ def detect_title_from_pdf_meta(pdf_path: str) -> str:
 def extract_pymupdf(pdf_path: str, title: str) -> str:
     """直接从 PDF 文字层抽，按页分页，零损耗。"""
     import fitz
-    doc = fitz.open(pdf_path)
+    try:
+        doc = fitz.open(pdf_path)
+    except Exception:
+        return f"# {title}\n\n> PDF 打开失败：{pdf_path}\n"
     out = [f"# {title}\n"]
     for pno in range(len(doc)):
-        text = doc[pno].get_text("text").strip()
+        try:
+            text = doc[pno].get_text("text").strip()
+        except Exception:
+            text = ""
         out.append(f"\n## 第 {pno + 1} 页\n")
         if text:
             out.append(text + "\n")
@@ -94,8 +100,12 @@ def extract_pymupdf(pdf_path: str, title: str) -> str:
 # ============================================================
 def extract_mineru(json_path: str, title: str) -> str:
     """从 MinerU middle.json 读块结构，按字号分级 + 块间距离智能合并。"""
-    with open(json_path, encoding="utf-8") as f:
-        data = json.load(f)
+    try:
+        with open(json_path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return ""
+
     pdf_info = data.get("pdf_info", [])
     if not pdf_info:
         return ""
@@ -117,7 +127,10 @@ def extract_mineru(json_path: str, title: str) -> str:
 
         block_list = []
         for blk in blocks:
-            x0, y0, x1, y1 = blk["bbox"]
+            try:
+                x0, y0, x1, y1 = blk["bbox"]
+            except (KeyError, TypeError, ValueError):
+                continue
             txt = ""
             max_sz = 0
             for line in blk.get("lines", []):
@@ -145,10 +158,13 @@ def extract_mineru(json_path: str, title: str) -> str:
                 line_h = max(12, prev_bbox[3] - prev_bbox[1])
                 close = y_gap < line_h * 0.6
                 prev_ends_punct = prev_text and prev_text[-1] in SENT_END
-                size_jump = abs(sz - merged[-1][0]) > 1.5
+
+                # 以合并组首块字号为基线检测跳变，避免 max 累积后基线漂移
+                grp_sz = merged[-1][0]
+                size_jump = abs(sz - grp_sz) > 1.5
 
                 if same_x and close and not prev_ends_punct and not size_jump:
-                    merged[-1] = (max(merged[-1][0], sz), merged[-1][1] + txt)
+                    merged[-1] = (merged[-1][0], merged[-1][1] + txt)
                     continue
             merged.append((sz, txt))
 
@@ -191,13 +207,37 @@ def extract_ocr_md(md_path: str, title: str) -> str:
     else:
         total_chars = len(text)
         m = re.search(r"^pages:\s*(\d+)", text, flags=re.MULTILINE)
-        est_pages = int(m.group(1)) if m else 400
-        per_page = max(400, total_chars // est_pages)
-        page_dict = {}
-        for i in range(est_pages):
-            start = i * per_page
-            end = (i + 1) * per_page if i < est_pages - 1 else total_chars
-            page_dict[i + 1] = text[start:end]
+        est_pages = int(m.group(1)) if m else max(1, total_chars // 2000)
+        if est_pages <= 1:
+            page_dict = {1: text}
+        else:
+            per_page = total_chars // est_pages
+            cuts = [0]
+            for i in range(1, est_pages):
+                guess = i * per_page
+                # 在估计位置前后各 200 字符范围内找自然断点
+                search_start = max(0, guess - 200)
+                search_end = min(total_chars, guess + 200)
+                snippet = text[search_start:search_end]
+                # 优先找段落边界（连续换行）
+                para = snippet.rfind("\n\n")
+                if para > 0:
+                    cuts.append(search_start + para + 2)
+                    continue
+                # 其次找句末标点
+                best = -1
+                for ch in SENT_END:
+                    pos = snippet[:200].rfind(ch)
+                    if pos > best:
+                        best = pos
+                if best >= 0:
+                    cuts.append(search_start + best + 1)
+                else:
+                    cuts.append(guess)
+            cuts.append(total_chars)
+            page_dict = {}
+            for i in range(est_pages):
+                page_dict[i + 1] = text[cuts[i]:cuts[i + 1]]
 
     out = [f"# {title}\n"]
     for pno in sorted(page_dict.keys()):
@@ -263,14 +303,16 @@ def pick_mode(input_path: str, mode: str = "auto", ocr_dir: str | None = None):
             doc.close()
             if sample_chars > 200:
                 return "pymupdf", input_path, None
-        except (ImportError, Exception):
+        except Exception:
+            # PDF 损坏或无文字层 → 继续尝试 OCR 路径
             pass
 
+        dir_name = os.path.dirname(input_path)
         stem = Path(input_path).stem
         candidates = [
-            os.path.join(os.path.dirname(input_path), f"{stem}_middle.json"),
-            os.path.join("_mineru", f"{stem}_middle.json"),
-            os.path.join("_mineru_batch", f"{stem}", "ocr", f"{stem}_middle.json"),
+            os.path.join(dir_name, f"{stem}_middle.json"),
+            os.path.join(dir_name, "_mineru", f"{stem}_middle.json"),
+            os.path.join(dir_name, "_mineru_batch", f"{stem}", "ocr", f"{stem}_middle.json"),
         ]
         if ocr_dir:
             candidates.insert(0, os.path.join(ocr_dir, f"{stem}_middle.json"))
@@ -279,8 +321,8 @@ def pick_mode(input_path: str, mode: str = "auto", ocr_dir: str | None = None):
                 return "mineru", cand, None
 
         md_candidates = [
-            os.path.join(os.path.dirname(input_path), f"{stem}.md"),
-            os.path.join(os.path.dirname(input_path), "_ocr", f"{stem}.md"),
+            os.path.join(dir_name, f"{stem}.md"),
+            os.path.join(dir_name, "_ocr", f"{stem}.md"),
         ]
         if ocr_dir:
             md_candidates.insert(0, os.path.join(ocr_dir, f"{stem}.md"))

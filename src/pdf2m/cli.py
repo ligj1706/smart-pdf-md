@@ -29,7 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "-o", "--output",
         default="./_md_output",
-        help="输出目录（默认 ./ _md_output）",
+        help="输出目录（默认 ./_md_output）",
     )
     parser.add_argument(
         "--mode",
