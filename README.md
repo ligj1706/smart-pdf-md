@@ -21,7 +21,7 @@ Traditional PDF extractors fail on **scanned PDFs**; OCR outputs suffer from **b
 - **Smart paragraph merging**: line gap + sentence-ending punctuation + heading heuristics
 - **Noise filtering**: headers, footers, isolated page numbers
 - **Parallel processing**: `-w N` for thread-pool speedup
-- **OCR-tool agnostic**: works with MinerU, PaddleOCR, Tesseract outputs
+- **OCR-tool agnostic**: works with outputs from MinerU, PaddleOCR, Tesseract, and more
 - **Single dependency** (just PyMuPDF)
 
 ## 📦 Installation
