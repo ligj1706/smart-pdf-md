@@ -149,26 +149,22 @@ def extract_mineru(json_path: str, title: str) -> str:
         out.append(f"\n## 第 {page_idx + 1} 页\n")
 
         merged = []
-        for i, (bbox, sz, txt) in enumerate(block_list):
+        for bbox, sz, txt in block_list:
             if merged:
-                prev_bbox = block_list[i - 1][0]
-                prev_text = merged[-1][1]
-                same_x = abs(prev_bbox[0] - bbox[0]) < 8
-                y_gap = bbox[1] - prev_bbox[3]
-                line_h = max(12, prev_bbox[3] - prev_bbox[1])
+                grp_sz, grp_first_bbox, last_bbox, prev_text = merged[-1]
+                same_x = abs(grp_first_bbox[0] - bbox[0]) < 8
+                y_gap = bbox[1] - last_bbox[3]
+                line_h = max(12, last_bbox[3] - last_bbox[1])
                 close = y_gap < line_h * 0.6
                 prev_ends_punct = prev_text and prev_text[-1] in SENT_END
-
-                # 以合并组首块字号为基线检测跳变，避免 max 累积后基线漂移
-                grp_sz = merged[-1][0]
                 size_jump = abs(sz - grp_sz) > 1.5
 
                 if same_x and close and not prev_ends_punct and not size_jump:
-                    merged[-1] = (merged[-1][0], merged[-1][1] + txt)
+                    merged[-1] = (grp_sz, grp_first_bbox, bbox, prev_text + txt)
                     continue
-            merged.append((sz, txt))
+            merged.append((sz, bbox, bbox, txt))
 
-        for sz, txt in merged:
+        for sz, _, _, txt in merged:
             if sz > body_sz * 1.3 and len(txt) <= 25:
                 out.append(f"\n### {txt}\n")
             elif sz > body_sz * 1.15 and len(txt) <= 30:
