@@ -73,10 +73,45 @@ def detect_title_from_pdf_meta(pdf_path: str) -> str:
 
 
 # ============================================================
+# 段落合并（共用）
+# ============================================================
+def _merge_lines_to_paragraphs(lines: list[str]) -> list[tuple[str, str]]:
+    """将断行合并为段落。返回 [(kind, text), ...]，kind 为 'h3' 或 'p'。"""
+    paragraphs: list[tuple[str, str]] = []
+    i = 0
+    while i < len(lines):
+        cur = lines[i]
+        prev_len = len(lines[i - 1]) if i > 0 else 0
+        next_len = len(lines[i + 1]) if i + 1 < len(lines) else 0
+
+        if is_short_title(cur, prev_len, next_len):
+            paragraphs.append(("h3", cur))
+            i += 1
+            continue
+
+        merged = cur
+        j = i + 1
+        while j < len(lines):
+            nxt = lines[j]
+            if is_short_title(nxt, len(merged), len(lines[j + 1]) if j + 1 < len(lines) else 0):
+                break
+            if merged and merged[-1] in SENT_END:
+                break
+            if merged and merged[-1] in SENT_END_ASCII and len(nxt) > 15:
+                break
+            merged += nxt
+            j += 1
+
+        paragraphs.append(("p", merged))
+        i = j
+    return paragraphs
+
+
+# ============================================================
 # 模式 1：PyMuPDF 文字层（最精准）
 # ============================================================
 def extract_pymupdf(pdf_path: str, title: str) -> str:
-    """直接从 PDF 文字层抽，按页分页，零损耗。"""
+    """直接从 PDF 文字层抽，按页分页，合并断行形成完整段落。"""
     import fitz
     try:
         doc = fitz.open(pdf_path)
@@ -90,7 +125,15 @@ def extract_pymupdf(pdf_path: str, title: str) -> str:
             text = ""
         out.append(f"\n## 第 {pno + 1} 页\n")
         if text:
-            out.append(text + "\n")
+            raw_lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
+            lines = [ln for ln in raw_lines if not is_page_noise(ln)]
+            if lines:
+                for kind, t in _merge_lines_to_paragraphs(lines):
+                    if kind == "h3":
+                        out.append(f"\n### {t}\n")
+                    else:
+                        out.append(t + "\n")
+        out.append("")
     doc.close()
     return "\n".join(out)
 
@@ -245,35 +288,7 @@ def extract_ocr_md(md_path: str, title: str) -> str:
 
         out.append(f"\n## 第 {pno} 页\n")
 
-        paragraphs = []
-        i = 0
-        while i < len(lines):
-            cur = lines[i]
-            prev_len = len(lines[i - 1]) if i > 0 else 0
-            next_len = len(lines[i + 1]) if i + 1 < len(lines) else 0
-
-            if is_short_title(cur, prev_len, next_len):
-                paragraphs.append(("h3", cur))
-                i += 1
-                continue
-
-            merged = cur
-            j = i + 1
-            while j < len(lines):
-                nxt = lines[j]
-                if is_short_title(nxt, len(merged), len(lines[j + 1]) if j + 1 < len(lines) else 0):
-                    break
-                if merged and merged[-1] in SENT_END:
-                    break
-                if merged and merged[-1] in SENT_END_ASCII and len(nxt) > 15:
-                    break
-                merged += nxt
-                j += 1
-
-            paragraphs.append(("p", merged))
-            i = j
-
-        for kind, t in paragraphs:
+        for kind, t in _merge_lines_to_paragraphs(lines):
             if kind == "h3":
                 out.append(f"\n### {t}\n")
             else:
