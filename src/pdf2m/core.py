@@ -73,6 +73,54 @@ def detect_title_from_pdf_meta(pdf_path: str) -> str:
 
 
 # ============================================================
+# 文本后处理
+# ============================================================
+def _fix_spacing(text: str) -> str:
+    """修复 PDF 提取后单词粘连问题（pymupdf 默认不插空格）。"""
+    text = re.sub(r"([a-z])([A-Z][a-z])", r"\1 \2", text)
+    text = re.sub(r"(\d)([A-Za-z])", r"\1 \2", text)
+    text = re.sub(r"([.!?;:)])([A-Z])", r"\1 \2", text)
+    text = re.sub(r"(\w)(\()", r"\1 \2", text)
+    text = re.sub(r"(\))(\w)", r"\1 \2", text)
+    text = re.sub(r"[ \t]+", " ", text)
+    return text
+
+
+# ============================================================
+# 图片提取
+# ============================================================
+def _extract_page_images(doc, page_no: int, output_dir: str, stem: str) -> list[str]:
+    """提取页面中的图片，保存到 images/ 子目录，返回 Markdown 引用列表。"""
+    refs: list[str] = []
+    try:
+        page = doc[page_no]
+        image_list = page.get_images(full=True)
+    except Exception:
+        return refs
+
+    if not image_list:
+        return refs
+
+    img_dir = os.path.join(output_dir, "images")
+    os.makedirs(img_dir, exist_ok=True)
+
+    for i, img in enumerate(image_list):
+        try:
+            xref = img[0]
+            base_image = doc.extract_image(xref)
+            image_bytes = base_image["image"]
+            ext = base_image["ext"]
+            fname = f"{stem}_p{page_no + 1}_img{i}.{ext}"
+            fpath = os.path.join(img_dir, fname)
+            with open(fpath, "wb") as f:
+                f.write(image_bytes)
+            refs.append(f"![{fname}](images/{fname})")
+        except Exception:
+            continue
+    return refs
+
+
+# ============================================================
 # 段落合并（共用）
 # ============================================================
 def _merge_lines_to_paragraphs(lines: list[str]) -> list[tuple[str, str]]:
@@ -99,7 +147,13 @@ def _merge_lines_to_paragraphs(lines: list[str]) -> list[tuple[str, str]]:
                 break
             if merged and merged[-1] in SENT_END_ASCII and len(nxt) > 15:
                 break
-            merged += nxt
+            # 英文行间补空格，中文（CJK）不需要
+            need_space = (
+                merged
+                and not ("一" <= merged[-1] <= "鿿")
+                and not ("一" <= nxt[0] <= "鿿")
+            )
+            merged += (" " + nxt) if need_space else nxt
             j += 1
 
         paragraphs.append(("p", merged))
@@ -107,32 +161,52 @@ def _merge_lines_to_paragraphs(lines: list[str]) -> list[tuple[str, str]]:
     return paragraphs
 
 
+def _render_paragraphs(paragraphs: list[tuple[str, str]]) -> str:
+    """将 [(kind, text), ...] 渲染为 Markdown 文本块。"""
+    out = []
+    for kind, t in paragraphs:
+        if kind == "h3":
+            out.append(f"\n### {t}\n")
+        else:
+            out.append(t + "\n")
+    return "\n".join(out)
+
+
 # ============================================================
 # 模式 1：PyMuPDF 文字层（最精准）
 # ============================================================
-def extract_pymupdf(pdf_path: str, title: str) -> str:
-    """直接从 PDF 文字层抽，按页分页，合并断行形成完整段落。"""
+def extract_pymupdf(pdf_path: str, title: str, output_dir: str | None = None) -> str:
+    """直接从 PDF 文字层抽，按页分页，合并断行形成完整段落。
+    自动提取图片并插入 Markdown 引用。"""
     import fitz
     try:
         doc = fitz.open(pdf_path)
     except Exception:
         return f"# {title}\n\n> PDF 打开失败：{pdf_path}\n"
+
+    stem = Path(pdf_path).stem
+    flags = getattr(fitz, "TEXT_IGNORE_ACTUALTEXT", 0) | getattr(fitz, "TEXT_DEHYPHENATE", 0)
+
     out = [f"# {title}\n"]
     for pno in range(len(doc)):
         try:
-            text = doc[pno].get_text("text").strip()
+            text = doc[pno].get_text("text", flags=flags).strip()
         except Exception:
             text = ""
         out.append(f"\n## 第 {pno + 1} 页\n")
+
+        # 图片提取
+        if output_dir:
+            img_refs = _extract_page_images(doc, pno, output_dir, stem)
+            for ref in img_refs:
+                out.append(ref + "\n")
+
         if text:
+            text = _fix_spacing(text)
             raw_lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
             lines = [ln for ln in raw_lines if not is_page_noise(ln)]
             if lines:
-                for kind, t in _merge_lines_to_paragraphs(lines):
-                    if kind == "h3":
-                        out.append(f"\n### {t}\n")
-                    else:
-                        out.append(t + "\n")
+                out.append(_render_paragraphs(_merge_lines_to_paragraphs(lines)))
         out.append("")
     doc.close()
     return "\n".join(out)
@@ -288,11 +362,7 @@ def extract_ocr_md(md_path: str, title: str) -> str:
 
         out.append(f"\n## 第 {pno} 页\n")
 
-        for kind, t in _merge_lines_to_paragraphs(lines):
-            if kind == "h3":
-                out.append(f"\n### {t}\n")
-            else:
-                out.append(t + "\n")
+        out.append(_render_paragraphs(_merge_lines_to_paragraphs(lines)))
         out.append("\n")
 
     return "\n".join(out)
@@ -372,7 +442,7 @@ def process_one(
 
     if picked == "pymupdf":
         title = detect_title_from_pdf_meta(source)
-        md = extract_pymupdf(source, title)
+        md = extract_pymupdf(source, title, output_dir)
     elif picked == "mineru":
         title = Path(source).stem.replace("_middle", "")
         md = extract_mineru(source, title)
